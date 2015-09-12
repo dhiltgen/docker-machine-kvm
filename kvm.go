@@ -13,9 +13,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 	"time"
 
-	// "github.com/codegangsta/cli"
 	"github.com/docker/machine/libmachine/drivers"
 	"github.com/docker/machine/libmachine/log"
 	"github.com/docker/machine/libmachine/mcnflag"
@@ -32,10 +32,9 @@ const (
 	dnsmasqLeases      = "/var/lib/libvirt/dnsmasq/%s.leases"
 	dnsmasqStatus      = "/var/lib/libvirt/dnsmasq/%s.status"
 
-	// TODO - Switch to template based instead of sprintf substitution
-	domainXML = `<domain type='kvm'>
-  <name>%s</name> <memory unit='M'>%d</memory>
-  <vcpu>%d</vcpu>
+	domainXMLTemplate = `<domain type='kvm'>
+  <name>{{.MachineName}}</name> <memory unit='M'>{{.Memory}}</memory>
+  <vcpu>{{.CPU}}</vcpu>
   <features><acpi/><apic/><pae/></features>
   <os>
     <type>hvm</type>
@@ -45,22 +44,22 @@ const (
   </os>
   <devices>
     <disk type='file' device='cdrom'>
-      <source file='%s'/>
+      <source file='{{.ISO}}'/>
       <target dev='hdc' bus='ide'/>
       <readonly/>
     </disk>
     <disk type='file' device='disk'>
-      <source file='%s'/>
+      <source file='{{.DiskPath}}'/>
       <target dev='hda' bus='ide'/>
     </disk>
     <graphics type='vnc' autoport='yes' listen='127.0.0.1'>
       <listen type='address' address='127.0.0.1'/>
     </graphics>
     <interface type='network'>
-      <source network='%s'/>
+      <source network='{{.Network}}'/>
     </interface>
     <interface type='network'>
-      <source network='%s'/>
+      <source network='{{.PrivateNetwork}}'/>
     </interface>
   </devices>
 </domain>`
@@ -81,10 +80,12 @@ type Driver struct {
 	DiskSize         int
 	CPU              int
 	Network          string
+	PrivateNetwork   string
 	ISO              string
 	Boot2DockerURL   string
 	CaCertPath       string
 	PrivateKeyPath   string
+	DiskPath         string
 	connectionString string
 	conn             *libvirt.VirConnection
 	VM               *libvirt.VirDomain
@@ -93,19 +94,6 @@ type Driver struct {
 
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	return []mcnflag.Flag{
-		/*
-		 * Can't support this at present due to filesystem assumptions
-		 * If we can figure out how to copy the disk image up
-		 * to the remote system, then we could support remote libvirt
-		 * instances
-		 */
-		/*
-			mcnflag.Flag{
-				Name:  "kvm-connection",
-				Usage: "The libvirt connection string",
-				Value: "qemu:///system",
-			},
-		*/
 		mcnflag.Flag{
 			Name:  "kvm-memory",
 			Usage: "Size of memory for host in MB",
@@ -133,6 +121,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Usage:  "The URL of the boot2docker image. Defaults to the latest available version",
 			Value:  "",
 		},
+		/* Not yet implemented
+		mcnflag.Flag{
+			Name:  "kvm-no-share",
+			Usage: "Disable the mount of your home directory",
+		},
+		*/
 	}
 }
 
@@ -179,10 +173,10 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SwarmMaster = flags.Bool("swarm-master")
 	d.SwarmHost = flags.String("swarm-host")
 	d.SwarmDiscovery = flags.String("swarm-discovery")
+	d.ISO = filepath.Join(d.LocalArtifactPath("."), isoFilename)
 	d.SSHUser = "docker"
 	d.SSHPort = 22
-	d.ISO = filepath.Join(d.LocalArtifactPath("."), isoFilename)
-
+	d.DiskPath = filepath.Join(d.LocalArtifactPath("."), fmt.Sprintf("%s.img", d.MachineName))
 	return nil
 }
 
@@ -196,25 +190,62 @@ func (d *Driver) GetURL() (string, error) {
 	if ip == "" {
 		return "", nil
 	}
-	return fmt.Sprintf("tcp://%s:2376", ip), nil
+	return fmt.Sprintf("tcp://%s:2376", ip), nil // TODO - don't hardcode the port!
 }
 
 // Create, or verify the private network is properly configured
 func (d *Driver) validatePrivateNetwork() error {
 	log.Debug("Validating private network")
-	_, err := d.conn.LookupNetworkByName(privateNetworkName)
+	network, err := d.conn.LookupNetworkByName(d.PrivateNetwork)
 	if err == nil {
-		// TODO - validate the proper configuration
+		xmldoc, err := network.GetXMLDesc(0)
+		if err != nil {
+			return err
+		}
+		/* XML structure:
+		<network>
+		    ...
+		    <ip address='a.b.c.d' netmask='255.255.255.0'>
+		        <dhcp>
+		            <range start='a.b.c.d' end='w.x.y.z'/>
+		        </dhcp>
+		*/
+		type Ip struct {
+			Address string `xml:"address,attr"`
+			Netmask string `xml:"netmask,attr"`
+		}
+		type Network struct {
+			Ip Ip `xml:"ip"`
+		}
+
+		var nw Network
+		err = xml.Unmarshal([]byte(xmldoc), &nw)
+		if err != nil {
+			return err
+		}
+
+		if nw.Ip.Address == "" {
+			return fmt.Errorf("%s network doesn't have DHCP configured properly", d.PrivateNetwork)
+		}
+		// Corner case, but might happen...
+		if active, err := network.IsActive(); !active {
+			log.Debugf("Reactivating private network: %s", err)
+			err = network.Create()
+			if err != nil {
+				log.Warnf("Failed to Start network: %s", err)
+				return err
+			}
+		}
 		return nil
 	}
 	// TODO - try a couple pre-defined networks and look for conflicts before
 	//        settling on one
-	xml := fmt.Sprintf(networkXML, privateNetworkName,
+	xml := fmt.Sprintf(networkXML, d.PrivateNetwork,
 		"192.168.42.1",
 		"255.255.255.0",
 		"192.168.42.2",
 		"192.168.42.254")
-	network, err := d.conn.NetworkDefineXML(xml)
+	network, err = d.conn.NetworkDefineXML(xml)
 	if err != nil {
 		log.Errorf("Failed to create private network: %s", err)
 		return nil
@@ -242,8 +273,8 @@ func (d *Driver) validateNetwork(name string) error {
 }
 
 func (d *Driver) PreCreateCheck() error {
-	// We could look at d.conn.GetCapabilities()
-	// parse the XML, and look for hypervisors we care about
+	// TODO We could look at d.conn.GetCapabilities()
+	// parse the XML, and look for kvm
 
 	log.Debug("About to check libvirt version")
 
@@ -302,10 +333,17 @@ func (d *Driver) Create() error {
 	}
 
 	log.Debugf("Defining VM...")
-	// TODO Needs love for other tunables users might want to tweak
-	xml := fmt.Sprintf(domainXML, d.MachineName, d.Memory, d.CPU,
-		d.ISO, d.diskPath(), d.Network, privateNetworkName)
-	vm, err := d.conn.DomainDefineXML(xml)
+	tmpl, err := template.New("domain").Parse(domainXMLTemplate)
+	if err != nil {
+		return err
+	}
+	var xml bytes.Buffer
+	err = tmpl.Execute(&xml, d)
+	if err != nil {
+		return err
+	}
+
+	vm, err := d.conn.DomainDefineXML(xml.String())
 	if err != nil {
 		log.Warnf("Failed to create the VM: %s", err)
 		return err
@@ -443,17 +481,18 @@ func (d *Driver) getMAC() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// XML structure:
-	//  <domain>
-	//      ...
-	//      <devices>
-	//          ...
-	//          <interface type='network'>
-	//              ...
-	//              <mac address='52:54:00:d2:3f:ba'/>
-	//              ...
-	//          </interface>
-	//          ...
+	/* XML structure:
+	<domain>
+	    ...
+	    <devices>
+	        ...
+	        <interface type='network'>
+	            ...
+	            <mac address='52:54:00:d2:3f:ba'/>
+	            ...
+	        </interface>
+	        ...
+	*/
 	type Mac struct {
 		Address string `xml:"address,attr"`
 	}
@@ -483,7 +522,7 @@ func (d *Driver) getMAC() (string, error) {
 }
 
 func (d *Driver) getIPByMACFromLeaseFile(mac string) (string, error) {
-	leaseFile := fmt.Sprintf(dnsmasqLeases, privateNetworkName)
+	leaseFile := fmt.Sprintf(dnsmasqLeases, d.PrivateNetwork)
 	data, err := ioutil.ReadFile(leaseFile)
 	if err != nil {
 		log.Debugf("Failed to retrieve dnsmasq leases from %s", leaseFile)
@@ -507,7 +546,7 @@ func (d *Driver) getIPByMACFromLeaseFile(mac string) (string, error) {
 }
 
 func (d *Driver) getIPByMacFromSettings(mac string) (string, error) {
-	network, err := d.conn.LookupNetworkByName(privateNetworkName)
+	network, err := d.conn.LookupNetworkByName(d.PrivateNetwork)
 	if err != nil {
 		log.Warnf("Failed to find network: %s", err)
 		return "", err
@@ -522,7 +561,7 @@ func (d *Driver) getIPByMacFromSettings(mac string) (string, error) {
 	type Lease struct {
 		Ip_address  string `json:"ip-address"`
 		Mac_address string `json:"mac-address"`
-		/* Other unused fields omitted */
+		// Other unused fields omitted
 	}
 	var s []Lease
 
@@ -559,10 +598,6 @@ func (d *Driver) GetIP() (string, error) {
 
 func (d *Driver) publicSSHKeyPath() string {
 	return d.GetSSHKeyPath() + ".pub"
-}
-
-func (d *Driver) diskPath() string {
-	return filepath.Join(d.LocalArtifactPath("."), fmt.Sprintf("%s.img", d.MachineName))
 }
 
 // Make a boot2docker VM disk image.
@@ -609,7 +644,7 @@ func (d *Driver) generateDiskImage(size int) error {
 		return err
 	}
 	raw := bytes.NewReader(buf.Bytes())
-	return createDiskImage(d.diskPath(), size, raw)
+	return createDiskImage(d.DiskPath, size, raw)
 }
 
 // createDiskImage makes a disk image at dest with the given size in MB. If r is
@@ -639,5 +674,6 @@ func NewDriver() *Driver {
 		log.Fatalf("Failed to connect to libvirt: %s", err)
 	}
 	d.conn = &conn
+	d.PrivateNetwork = privateNetworkName
 	return d
 }
