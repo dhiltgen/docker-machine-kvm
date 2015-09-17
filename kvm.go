@@ -27,7 +27,6 @@ import (
 const (
 	connectionString   = "qemu:///system"
 	privateNetworkName = "docker-machines"
-	dockerConfigDir    = "/var/lib/boot2docker"
 	isoFilename        = "boot2docker.iso"
 	dnsmasqLeases      = "/var/lib/libvirt/dnsmasq/%s.leases"
 	dnsmasqStatus      = "/var/lib/libvirt/dnsmasq/%s.status"
@@ -517,7 +516,10 @@ func (d *Driver) getMAC() (string, error) {
 		return "", err
 	}
 	// Always assume the second interface is the one we want
-	// TODO harden
+	if len(dom.Devices.Interfaces) < 2 {
+		return "", fmt.Errorf("VM doesn't have enough network interfaces.  Expected at least 2, found %d",
+			len(dom.Devices.Interfaces))
+	}
 	return dom.Devices.Interfaces[1].Mac.Address, nil
 }
 
@@ -580,6 +582,7 @@ func (d *Driver) getIPByMacFromSettings(mac string) (string, error) {
 }
 
 func (d *Driver) GetIP() (string, error) {
+	log.Debugf("GetIP called for %s", d.MachineName)
 	mac, err := d.getMAC()
 	if err != nil {
 		return "", err
