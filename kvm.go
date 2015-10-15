@@ -93,28 +93,28 @@ type Driver struct {
 
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 	return []mcnflag.Flag{
-		mcnflag.Flag{
+		mcnflag.IntFlag{
 			Name:  "kvm-memory",
 			Usage: "Size of memory for host in MB",
 			Value: 1024,
 		},
-		mcnflag.Flag{
+		mcnflag.IntFlag{
 			Name:  "kvm-disk-size",
 			Usage: "Size of disk for host in MB",
 			Value: 20000,
 		},
-		mcnflag.Flag{
+		mcnflag.IntFlag{
 			Name:  "kvm-cpu-count",
 			Usage: "Number of CPUs",
 			Value: 1,
 		},
 		// TODO - support for multiple networks
-		mcnflag.Flag{
+		mcnflag.StringFlag{
 			Name:  "kvm-network",
 			Usage: "Name of network to connect to",
 			Value: "default",
 		},
-		mcnflag.Flag{
+		mcnflag.StringFlag{
 			EnvVar: "KVM_BOOT2DOCKER_URL",
 			Name:   "kvm-boot2docker-url",
 			Usage:  "The URL of the boot2docker image. Defaults to the latest available version",
@@ -138,7 +138,7 @@ func (d *Driver) GetSSHHostname() (string, error) {
 }
 
 func (d *Driver) GetSSHKeyPath() string {
-	return filepath.Join(d.LocalArtifactPath("."), "id_rsa")
+	return d.ResolveStorePath("id_rsa")
 }
 
 func (d *Driver) GetSSHPort() (int, error) {
@@ -172,10 +172,10 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SwarmMaster = flags.Bool("swarm-master")
 	d.SwarmHost = flags.String("swarm-host")
 	d.SwarmDiscovery = flags.String("swarm-discovery")
-	d.ISO = filepath.Join(d.LocalArtifactPath("."), isoFilename)
+	d.ISO = d.ResolveStorePath(isoFilename)
 	d.SSHUser = "docker"
 	d.SSHPort = 22
-	d.DiskPath = filepath.Join(d.LocalArtifactPath("."), fmt.Sprintf("%s.img", d.MachineName))
+	d.DiskPath = d.ResolveStorePath(fmt.Sprintf("%s.img", d.MachineName))
 	return nil
 }
 
@@ -296,7 +296,7 @@ func (d *Driver) PreCreateCheck() error {
 }
 
 func (d *Driver) Create() error {
-	b2dutils := mcnutils.NewB2dUtils("", "", d.GlobalArtifactPath())
+	b2dutils := mcnutils.NewB2dUtils("", "", d.StorePath)
 	if err := b2dutils.CopyIsoToMachineDir(d.Boot2DockerURL, d.MachineName); err != nil {
 		return err
 	}
@@ -306,13 +306,13 @@ func (d *Driver) Create() error {
 		return err
 	}
 
-	if err := os.MkdirAll(d.LocalArtifactPath("."), 0755); err != nil {
+	if err := os.MkdirAll(d.ResolveStorePath("."), 0755); err != nil {
 		return err
 	}
 
 	// Libvirt typically runs as a deprivileged service account and
 	// needs the execute bit set for directories that contain disks
-	for dir := d.LocalArtifactPath("."); dir != "/"; dir = filepath.Dir(dir) {
+	for dir := d.ResolveStorePath("."); dir != "/"; dir = filepath.Dir(dir) {
 		log.Debugf("Verifying executable bit set on %s", dir)
 		info, err := os.Stat(dir)
 		if err != nil {
