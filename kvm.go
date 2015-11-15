@@ -162,7 +162,7 @@ func (d *Driver) DriverName() string {
 }
 
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
-	log.Debugf("SetConfigFromFlags aclled")
+	log.Debugf("SetConfigFromFlags called")
 	d.Memory = flags.Int("kvm-memory")
 	d.DiskSize = flags.Int("kvm-disk-size")
 	d.CPU = flags.Int("kvm-cpu-count")
@@ -274,7 +274,6 @@ func (d *Driver) validateNetwork(name string) error {
 func (d *Driver) PreCreateCheck() error {
 	// TODO We could look at d.conn.GetCapabilities()
 	// parse the XML, and look for kvm
-
 	log.Debug("About to check libvirt version")
 
 	// TODO might want to check minimum version
@@ -670,13 +669,19 @@ func createDiskImage(dest string, size int, r io.Reader) error {
 	return f.Close()
 }
 
-func NewDriver() *Driver {
-	d := &Driver{}
-	conn, err := libvirt.NewVirConnection(d.connectionString)
+func NewDriver(hostName, storePath string) drivers.Driver {
+	conn, err := libvirt.NewVirConnection(connectionString)
 	if err != nil {
 		log.Fatalf("Failed to connect to libvirt: %s", err)
+		return nil
 	}
-	d.conn = &conn
-	d.PrivateNetwork = privateNetworkName
-	return d
+
+	return &Driver{
+		conn:           &conn,
+		PrivateNetwork: privateNetworkName,
+		BaseDriver: &drivers.BaseDriver{
+			MachineName: hostName,
+			StorePath:   storePath,
+		},
+	}
 }

@@ -6,5 +6,5 @@ import (
 )
 
 func main() {
-	plugin.RegisterDriver(kvm.NewDriver())
+	plugin.RegisterDriver(kvm.NewDriver("default", "path"))
 }
