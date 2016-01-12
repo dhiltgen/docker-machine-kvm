@@ -674,7 +674,8 @@ func NewDriver() *Driver {
 	d := &Driver{}
 	conn, err := libvirt.NewVirConnection(d.connectionString)
 	if err != nil {
-		log.Fatalf("Failed to connect to libvirt: %s", err)
+		log.Errorf("Failed to connect to libvirt: %s", err)
+		os.Exit(1)
 	}
 	d.conn = &conn
 	d.PrivateNetwork = privateNetworkName
