@@ -6,13 +6,15 @@ developed for Docker Machine.
 
 # Quick start instructions
 
-* Install docker-machine
+* Install `libvirt` and `qemu-kvm` on your system (e.g., `sudo apt-get install libvirt-bin qemu-kvm`)
+    * Add yourself to the `libvirtd` group (may vary by linux distro) so you don't need to sudo
+* Install [docker-machine](https://github.com/docker/machine/releases)
 * Go to the
   [releases](https://github.com/dhiltgen/docker-machine-kvm/releases)
   page and download the docker-machine-driver-kvm binary, putting it
   in your PATH.
 * You can now create virtual machines using this driver with
-  `docker-machine -d kvm`.
+  `docker-machine create -d kvm myengine0`.
 
 # Dependencies
 
@@ -21,6 +23,11 @@ library](https://github.com/alexzorin/libvirt-go) to create and manage
 KVM based virtual machines.  It has been tested with Ubuntu 12.04 through 15.04
 and should work on most platforms with KVM/libvirt support.  If you run into
 compatibility problems, please file an [issue](https://github.com/dhiltgen/docker-machine-kvm/issues).
+
+Typically you'll run `docker-machine` as yourself, so you'll want to
+follow your distro specific instructions on allowing libvirt access
+from your account.  For most distro's, you accomplish this by adding
+your account to the `libvirtd` group.
 
 
 # Capabilities
