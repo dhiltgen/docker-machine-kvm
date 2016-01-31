@@ -4,6 +4,16 @@ KVM driver for docker-machine
 This driver leverages the new [plugin architecture](https://github.com/docker/machine/issues/1626) being
 developed for Docker Machine.
 
+# Quick start instructions
+
+* Install docker-machine
+* Go to the
+  [releases](https://github.com/dhiltgen/docker-machine-kvm/releases)
+  page and download the docker-machine-driver-kvm binary, putting it
+  in your PATH.
+* You can now create virtual machines using this driver with
+  `docker-machine -d kvm`.
+
 # Dependencies
 
 This driver leverages [libvirt](http://libvirt.org/) and the [libvirt-go
