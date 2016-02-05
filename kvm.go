@@ -183,7 +183,7 @@ func (d *Driver) GetURL() (string, error) {
 	log.Debugf("GetURL called")
 	ip, err := d.GetIP()
 	if err != nil {
-		log.Warnf("Failed to get IP: %s", err)
+		log.Debugf("Failed to get IP: %s", err)
 		return "", err
 	}
 	if ip == "" {
@@ -300,7 +300,7 @@ func (d *Driver) Create() error {
 		return err
 	}
 
-	log.Infof("Creating SSH key...")
+	log.Debug("Creating SSH key...")
 	if err := ssh.GenerateSSHKey(d.GetSSHKeyPath()); err != nil {
 		return err
 	}
@@ -325,12 +325,12 @@ func (d *Driver) Create() error {
 		}
 	}
 
-	log.Debugf("Creating VM data disk...")
+	log.Debug("Creating VM data disk...")
 	if err := d.generateDiskImage(d.DiskSize); err != nil {
 		return err
 	}
 
-	log.Debugf("Defining VM...")
+	log.Debug("Defining VM...")
 	tmpl, err := template.New("domain").Parse(domainXMLTemplate)
 	if err != nil {
 		return err
@@ -559,6 +559,9 @@ func (d *Driver) getIPByMacFromSettings(mac string) (string, error) {
 	}
 	statusFile := fmt.Sprintf(dnsmasqStatus, bridge_name)
 	data, err := ioutil.ReadFile(statusFile)
+	if err != nil {
+		return "", err
+	}
 	type Lease struct {
 		Ip_address  string `json:"ip-address"`
 		Mac_address string `json:"mac-address"`
@@ -568,7 +571,7 @@ func (d *Driver) getIPByMacFromSettings(mac string) (string, error) {
 
 	err = json.Unmarshal(data, &s)
 	if err != nil {
-		log.Warnf("Failed to decode dnsmasq lease status: %s", err)
+		log.Debugf("Failed to decode dnsmasq lease status: %s", err)
 		return "", err
 	}
 	for _, value := range s {
