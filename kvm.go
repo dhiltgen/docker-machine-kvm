@@ -48,6 +48,7 @@ const (
       <readonly/>
     </disk>
     <disk type='file' device='disk'>
+      <driver name='qemu' type='raw' cache='{{.CacheMode}}' io='{{.IOMode}}' />
       <source file='{{.DiskPath}}'/>
       <target dev='hda' bus='ide'/>
     </disk>
@@ -85,6 +86,8 @@ type Driver struct {
 	CaCertPath       string
 	PrivateKeyPath   string
 	DiskPath         string
+	CacheMode        string
+	IOMode           string
 	connectionString string
 	conn             *libvirt.VirConnection
 	VM               *libvirt.VirDomain
@@ -119,6 +122,16 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:   "kvm-boot2docker-url",
 			Usage:  "The URL of the boot2docker image. Defaults to the latest available version",
 			Value:  "",
+		},
+		mcnflag.StringFlag{
+			Name:  "kvm-cache-mode",
+			Usage: "Disk cache mode: default, none, writethrough, writeback, directsync, or unsafe",
+			Value: "default",
+		},
+		mcnflag.StringFlag{
+			Name:  "kvm-io-mode",
+			Usage: "Disk IO mode: threads, native",
+			Value: "threads",
 		},
 		/* Not yet implemented
 		mcnflag.Flag{
@@ -168,6 +181,8 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.CPU = flags.Int("kvm-cpu-count")
 	d.Network = flags.String("kvm-network")
 	d.Boot2DockerURL = flags.String("kvm-boot2docker-url")
+	d.CacheMode = flags.String("kvm-cache-mode")
+	d.IOMode = flags.String("kvm-io-mode")
 
 	d.SwarmMaster = flags.Bool("swarm-master")
 	d.SwarmHost = flags.String("swarm-host")
