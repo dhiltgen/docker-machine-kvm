@@ -49,16 +49,24 @@ const (
     </disk>
     <disk type='file' device='disk'>
       <source file='{{.DiskPath}}'/>
-      <target dev='hda' bus='ide'/>
+      <target dev='vda' bus='virtio'/>
     </disk>
+    <serial type='pty'>
+      <target port='0'/>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
     <graphics type='vnc' autoport='yes' listen='127.0.0.1'>
       <listen type='address' address='127.0.0.1'/>
     </graphics>
     <interface type='network'>
       <source network='{{.Network}}'/>
+      <model type='virtio'/>
     </interface>
     <interface type='network'>
       <source network='{{.PrivateNetwork}}'/>
+      <model type='virtio'/>
     </interface>
   </devices>
 </domain>`
