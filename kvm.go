@@ -1,3 +1,5 @@
+// +build linux,cgo
+
 package kvm
 
 import (
@@ -7,7 +9,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/alexzorin/libvirt-go"
 	"io"
 	"io/ioutil"
 	"os"
@@ -15,6 +16,8 @@ import (
 	"strings"
 	"text/template"
 	"time"
+
+	"github.com/alexzorin/libvirt-go"
 
 	"github.com/docker/machine/libmachine/drivers"
 	"github.com/docker/machine/libmachine/log"
@@ -75,19 +78,20 @@ const (
 type Driver struct {
 	*drivers.BaseDriver
 
-	Memory           int
-	DiskSize         int
-	CPU              int
-	Network          string
-	PrivateNetwork   string
-	ISO              string
-	Boot2DockerURL   string
-	CaCertPath       string
-	PrivateKeyPath   string
-	DiskPath         string
+	Memory         int
+	DiskSize       int
+	CPU            int
+	Network        string
+	PrivateNetwork string
+	ISO            string
+	Boot2DockerURL string
+	CaCertPath     string
+	PrivateKeyPath string
+	DiskPath       string
+
 	connectionString string
 	conn             *libvirt.VirConnection
-	VM               *libvirt.VirDomain
+	vm               *libvirt.VirDomain
 	vmLoaded         bool
 }
 
@@ -346,7 +350,7 @@ func (d *Driver) Create() error {
 		log.Warnf("Failed to create the VM: %s", err)
 		return err
 	}
-	d.VM = &vm
+	d.vm = &vm
 	d.vmLoaded = true
 
 	return d.Start()
@@ -355,7 +359,7 @@ func (d *Driver) Create() error {
 func (d *Driver) Start() error {
 	log.Debugf("Starting VM %s", d.MachineName)
 	d.validateVMRef()
-	err := d.VM.Create()
+	err := d.vm.Create()
 	if err != nil {
 		log.Warnf("Failed to start: %s", err)
 		return err
@@ -387,7 +391,7 @@ func (d *Driver) Stop() error {
 	}
 
 	if s != state.Stopped {
-		err := d.VM.DestroyFlags(libvirt.VIR_DOMAIN_DESTROY_GRACEFUL)
+		err := d.vm.DestroyFlags(libvirt.VIR_DOMAIN_DESTROY_GRACEFUL)
 		if err != nil {
 			log.Warnf("Failed to gracefully shutdown VM")
 			return err
@@ -411,8 +415,8 @@ func (d *Driver) Remove() error {
 	// Note: If we switch to qcow disks instead of raw the user
 	//       could take a snapshot.  If you do, then Undefine
 	//       will fail unless we nuke the snapshots first
-	d.VM.Destroy() // Ignore errors
-	return d.VM.Undefine()
+	d.vm.Destroy() // Ignore errors
+	return d.vm.Undefine()
 }
 
 func (d *Driver) Restart() error {
@@ -426,13 +430,13 @@ func (d *Driver) Restart() error {
 func (d *Driver) Kill() error {
 	log.Debugf("Killing VM %s", d.MachineName)
 	d.validateVMRef()
-	return d.VM.Destroy()
+	return d.vm.Destroy()
 }
 
 func (d *Driver) GetState() (state.State, error) {
 	log.Debugf("Getting current state...")
 	d.validateVMRef()
-	states, err := d.VM.GetState()
+	states, err := d.vm.GetState()
 	if err != nil {
 		return state.None, err
 	}
@@ -465,7 +469,7 @@ func (d *Driver) validateVMRef() {
 		if err != nil {
 			log.Warnf("Failed to fetch machine")
 		} else {
-			d.VM = &vm
+			d.vm = &vm
 			d.vmLoaded = true
 		}
 	}
@@ -475,7 +479,7 @@ func (d *Driver) validateVMRef() {
 // with dnsmasq
 func (d *Driver) getMAC() (string, error) {
 	d.validateVMRef()
-	xmldoc, err := d.VM.GetXMLDesc(0)
+	xmldoc, err := d.vm.GetXMLDesc(0)
 	if err != nil {
 		return "", err
 	}
@@ -669,7 +673,7 @@ func createDiskImage(dest string, size int, r io.Reader) error {
 	return f.Close()
 }
 
-func NewDriver(hostName, storePath string) drivers.Driver {
+func NewDriver(hostName, storePath string) *Driver {
 	conn, err := libvirt.NewVirConnection(connectionString)
 	if err != nil {
 		log.Errorf("Failed to connect to libvirt: %s", err)
