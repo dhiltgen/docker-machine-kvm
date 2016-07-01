@@ -684,7 +684,7 @@ func createDiskImage(dest string, size int, r io.Reader) error {
 	return f.Close()
 }
 
-func NewDriver(hostName, storePath string) drivers.Driver {
+func NewDriver(hostName, storePath string) *Driver {
 	conn, err := libvirt.NewVirConnection(connectionString)
 	if err != nil {
 		log.Errorf("Failed to connect to libvirt: %s", err)
