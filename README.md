@@ -33,10 +33,10 @@ your account to the `libvirtd` group.
 # Capabilities
 
 ## Images
-By default `docker-machine-kvm` uses a [boot2docker.iso](https://github.com/boot2docker/boot2docker) for the kvm host. It's also possible to use every image that is derived from [boot2docker.iso](https://github.com/boot2docker/boot2docker) as well.
+By default `docker-machine-kvm` uses a [boot2docker.iso](https://github.com/boot2docker/boot2docker) as guest os for the kvm hypervisior. It's also possible to use every guest os image that is derived from [boot2docker.iso](https://github.com/boot2docker/boot2docker) as well.
 For using another image use the `--kvm-boot2docker-url` parameter. 
 
-Community Members did some tests and it works with [rancher/os](https://github.com/rancher/os) too.
+Community Members did some tests and it works with [rancher/os](https://github.com/rancher/os) as guest os too.
 
 ## Dual Network
 
