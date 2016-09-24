@@ -31,10 +31,17 @@ your account to the `libvirtd` group.
 
 
 # Capabilities
-* **boot2docker.iso** based images
-* **Dual Network**
-    * **eth1** - A host private network called **docker-machines** is automatically created to ensure we always have connectivity to the VMs.  The `docker-machine ip` command will always return this IP address which is only accessible from your local system.
-    * **eth0** - You can specify any libvirt named network.  If you don't specify one, the "default" named network will be used.
+
+## Images
+By default `docker-machine-kvm` uses a [boot2docker.iso](https://github.com/boot2docker/boot2docker) for the kvm host. It's also possible to use every image that is derived from [boot2docker.iso](https://github.com/boot2docker/boot2docker) as well.
+For using another image use the `--kvm-boot2docker-url` parameter. 
+
+Community Members did some tests and it works with [rancher/os](https://github.com/rancher/os) too.
+
+## Dual Network
+
+   * **eth1** - A host private network called **docker-machines** is automatically created to ensure we always have connectivity to the VMs.  The `docker-machine ip` command will always return this IP address which is only accessible from your local system.
+   * **eth0** - You can specify any libvirt named network.  If you don't specify one, the "default" named network will be used.
         * If you have exotic networking topolgies (openvswitch, etc.), you can use `virsh edit mymachinename` after creation, modify the first network definition by hand, then reboot the VM for the changes to take effect.
         * Typically this would be your "public" network accessible from external systems
         * To retrieve the IP address of this network, you can run a command like the following:
@@ -42,8 +49,19 @@ your account to the `libvirtd` group.
         docker-machine ssh mymachinename "ip -one -4 addr show dev eth0|cut -f7 -d' '"
         ```
 
-* **Other Tunables**
-    * Virtual CPU count via --kvm-cpu-count
-    * Disk size via --kvm-disk-size
-    * RAM via --kvm-memory
+## Driver Parameters
+
+Here are all currently driver parameters listed that you can use.
+
+| Parameter     | Description| 
+| ------------- | ------------- | 
+| **--kvm-cpu-count**     | Sets the used CPU Cores for the KVM Machine. Defaults to `1` . | 
+| **--kvm-disk-size**    | Sets the kvm machine Disk size in MB. Defaults to `20000` .      |  
+| **--kvm-memory** | Sets the Memory of the kvm machine in MB. Defaults to `1024`.      | 
+| **--kvm-network** | Sets the Network of the kvm machinee which it should connect to. Defaults to `default`.      |   
+| **--kvm-boot2docker-url** | Sets the url from which host the image is loaded. By default it's not set.   |
+| **--kvm-cache-mode** | Sets the caching mode of the kvm machine. Defaults to `default`.   |    
+| **--kvm-io-mode-url** | Sets the disk io mode of the kvm machine. Defaults to `threads`.   |      
+
+
 
