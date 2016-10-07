@@ -7,7 +7,6 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"github.com/alexzorin/libvirt-go"
 	"io"
 	"io/ioutil"
 	"os"
@@ -15,6 +14,8 @@ import (
 	"strings"
 	"text/template"
 	"time"
+
+	"github.com/alexzorin/libvirt-go"
 
 	"github.com/docker/machine/libmachine/drivers"
 	"github.com/docker/machine/libmachine/log"
@@ -537,6 +538,25 @@ func (d *Driver) getMAC() (string, error) {
 	return dom.Devices.Interfaces[1].Mac.Address, nil
 }
 
+func (d *Driver) getIPByMACFromAPI(mac string) (string, error) {
+	network, err := d.conn.LookupNetworkByName(d.PrivateNetwork)
+	if err != nil {
+		log.Errorf("Failed to lookup network %s", d.PrivateNetwork)
+		return "", err
+	}
+	leases, err := network.GetDHCPLeases()
+	if err != nil {
+		log.Warnf("Failed to retrieve DHCP leases from libvirt: %v", err)
+		return "", err
+	}
+	for _, lease := range leases {
+		if strings.ToLower(mac) == strings.ToLower(lease.GetMACAddress()) {
+			return lease.GetIPAddress(), nil
+		}
+	}
+	return "", errors.New("failed to match IP for MAC address")
+}
+
 func (d *Driver) getIPByMACFromLeaseFile(mac string) (string, error) {
 	leaseFile := fmt.Sprintf(dnsmasqLeases, d.PrivateNetwork)
 	data, err := ioutil.ReadFile(leaseFile)
@@ -574,6 +594,11 @@ func (d *Driver) getIPByMacFromSettings(mac string) (string, error) {
 	}
 	statusFile := fmt.Sprintf(dnsmasqStatus, bridge_name)
 	data, err := ioutil.ReadFile(statusFile)
+	if err != nil {
+		log.Debugf("Failed to read dnsmasq status from %s", statusFile)
+		return "", err
+	}
+
 	type Lease struct {
 		Ip_address  string `json:"ip-address"`
 		Mac_address string `json:"mac-address"`
@@ -595,22 +620,27 @@ func (d *Driver) getIPByMacFromSettings(mac string) (string, error) {
 	return "", nil
 }
 
+type ipLookupFunc func(mac string) (string, error)
+
 func (d *Driver) GetIP() (string, error) {
 	log.Debugf("GetIP called for %s", d.MachineName)
 	mac, err := d.getMAC()
 	if err != nil {
 		return "", err
 	}
-	/*
-	 * TODO - Figure out what version of libvirt changed behavior and
-	 *        be smarter about selecting which algorithm to use
-	 */
-	ip, err := d.getIPByMACFromLeaseFile(mac)
-	if ip == "" {
-		ip, err = d.getIPByMacFromSettings(mac)
+
+	methods := []ipLookupFunc{
+		d.getIPByMACFromLeaseFile,
+		d.getIPByMacFromSettings,
+		d.getIPByMACFromAPI,
 	}
-	log.Debugf("Unable to locate IP address for MAC %s", mac)
-	return ip, err
+	for _, method := range methods {
+		ip, err := method(mac)
+		if err == nil {
+			return ip, nil
+		}
+	}
+	return "", fmt.Errorf("unable to locate IP address for MAC %s")
 }
 
 func (d *Driver) publicSSHKeyPath() string {
