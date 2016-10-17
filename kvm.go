@@ -102,8 +102,8 @@ type Driver struct {
 	DiskPath         string
 	CacheMode        string
 	IOMode           string
-    StoragePoolName  string
-    StorageVolumeName string
+	StoragePoolName  string
+	StorageVolumeName string
 	connectionString string
 	conn             *libvirt.VirConnection
 	VM               *libvirt.VirDomain
@@ -207,14 +207,12 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.Boot2DockerURL = flags.String("kvm-boot2docker-url")
 	d.CacheMode = flags.String("kvm-cache-mode")
 	d.IOMode = flags.String("kvm-io-mode")
-
-    d.StoragePoolName = flags.String("kvm-storage-pool");
-    if flags.String("storage-volume") != "" {
-        d.StorageVolumeName = flags.String("kvm-storage-volume");
-    } else {
-        d.StorageVolumeName = d.MachineName;
-    }
-
+	d.StoragePoolName = flags.String("kvm-storage-pool");
+	if flags.String("storage-volume") != "" {
+		d.StorageVolumeName = flags.String("kvm-storage-volume");
+	} else {
+		d.StorageVolumeName = d.MachineName;
+	}
 	d.SwarmMaster = flags.Bool("swarm-master")
 	d.SwarmHost = flags.String("swarm-host")
 	d.SwarmDiscovery = flags.String("swarm-discovery")
@@ -378,12 +376,12 @@ func (d *Driver) Create() error {
 
 	log.Debugf("Defining VM...")
 
-    fullDomainTemplate := ""
-    if d.StoragePoolName != "" {
-        fullDomainTemplate = fmt.Sprintf(domainXMLTemplate, diskVolumeXML);
-    } else {
-        fullDomainTemplate = fmt.Sprintf(domainXMLTemplate, diskFileXML);
-    }
+	fullDomainTemplate := ""
+	if d.StoragePoolName != "" {
+		fullDomainTemplate = fmt.Sprintf(domainXMLTemplate, diskVolumeXML);
+	} else {
+		fullDomainTemplate = fmt.Sprintf(domainXMLTemplate, diskFileXML);
+	}
 	tmpl, err := template.New("domain").Parse(fullDomainTemplate)
 	if err != nil {
 		return err
@@ -698,18 +696,18 @@ func (d *Driver) generateDiskImage(size int) error {
 	if err := tw.Close(); err != nil {
 		return err
 	}
-    if d.StoragePoolName != "" {
-        return d.createDiskVolume(size, buf)
-    } else {
-        return d.createDiskImage(d.DiskPath, size, buf)
-    }
+	if d.StoragePoolName != "" {
+		return d.createDiskVolume(size, buf)
+	} else {
+		return d.createDiskImage(d.DiskPath, size, buf)
+	}
 }
 
 // createDiskImage makes a disk image at dest with the given size in MB. If r is
 // not nil, it will be read as a raw disk image to convert from.
 func (d *Driver) createDiskImage(dest string, size int, buf *bytes.Buffer) error {
 	raw := buf.Bytes()
-    r := bytes.NewReader(raw)
+	r := bytes.NewReader(raw)
 	// Convert a raw image from stdin to the dest VMDK image.
 	sizeBytes := int64(size) << 20 // usually won't fit in 32-bit int (max 2GB)
 	f, err := os.Create(dest)
@@ -729,40 +727,40 @@ func (d *Driver) createDiskImage(dest string, size int, buf *bytes.Buffer) error
 
 func (d *Driver) createDiskVolume(size int, buf *bytes.Buffer) error { 
 	raw := buf.Bytes()
-    sizeBytes := int64(size) << 20
-    pool, err := d.conn.LookupStoragePoolByName(d.StoragePoolName)
+	sizeBytes := int64(size) << 20
+	pool, err := d.conn.LookupStoragePoolByName(d.StoragePoolName)
 	if err != nil {
-        return err
-    }
-    xml := fmt.Sprintf(newVolumeXML, d.StorageVolumeName, sizeBytes, sizeBytes)
-    volume, err := pool.StorageVolCreateXML(xml,0);
-    if err != nil {
-        return err 
-    }
-    // We need a stream to do the upload.
-    vstream, err := libvirt.NewVirStream(d.conn,0);
-    if err != nil {
-        return err 
-    }
-    buflen := buf.Len();
-    volume.Upload(vstream,0,uint64(buflen), 0);
-    sent := 0;
-    for sent < buflen {
-        ret, err := vstream.Write(raw[sent:])
-        if err != nil {
-            return err 
-        }
-        sent = sent + ret
-    }
-    err = vstream.Close()
-    if err != nil {
-        return err 
-    }
-    err = vstream.Free()
-    if err != nil {
-        return err 
-    }
-    return nil
+		return err
+	}
+	xml := fmt.Sprintf(newVolumeXML, d.StorageVolumeName, sizeBytes, sizeBytes)
+	volume, err := pool.StorageVolCreateXML(xml,0);
+	if err != nil {
+		return err
+	}
+	// We need a stream to do the upload.
+	vstream, err := libvirt.NewVirStream(d.conn,0);
+	if err != nil {
+		return err
+	}
+	buflen := buf.Len();
+	volume.Upload(vstream,0,uint64(buflen), 0);
+	sent := 0;
+	for sent < buflen {
+		ret, err := vstream.Write(raw[sent:])
+		if err != nil {
+			return err
+		}
+		sent = sent + ret
+	}
+	err = vstream.Close()
+	if err != nil {
+		return err
+	}
+	err = vstream.Free()
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 func NewDriver(hostName, storePath string) drivers.Driver {
