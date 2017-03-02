@@ -35,6 +35,7 @@ const (
   <name>{{.MachineName}}</name> <memory unit='M'>{{.Memory}}</memory>
   <vcpu>{{.CPU}}</vcpu>
   <features><acpi/><apic/><pae/></features>
+  <cpu mode='host-passthrough'></cpu>
   <os>
     <type>hvm</type>
     <boot dev='cdrom'/>
