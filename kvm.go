@@ -15,7 +15,8 @@ import (
 	"text/template"
 	"time"
 
-	"github.com/alexzorin/libvirt-go"
+	libvirt "github.com/libvirt/libvirt-go"
+
 	"github.com/docker/machine/libmachine/drivers"
 	"github.com/docker/machine/libmachine/log"
 	"github.com/docker/machine/libmachine/mcnflag"
@@ -90,8 +91,8 @@ type Driver struct {
 	CacheMode        string
 	IOMode           string
 	connectionString string
-	conn             *libvirt.VirConnection
-	VM               *libvirt.VirDomain
+	conn             *libvirt.Connect
+	VM               *libvirt.Domain
 	vmLoaded         bool
 }
 
@@ -208,14 +209,14 @@ func (d *Driver) GetURL() (string, error) {
 	return fmt.Sprintf("tcp://%s:2376", ip), nil // TODO - don't hardcode the port!
 }
 
-func (d *Driver) getConn() (*libvirt.VirConnection, error) {
+func (d *Driver) getConn() (*libvirt.Connect, error) {
 	if d.conn == nil {
-		conn, err := libvirt.NewVirConnection(connectionString)
+		conn, err := libvirt.NewConnect(connectionString)
 		if err != nil {
 			log.Errorf("Failed to connect to libvirt: %s", err)
-			return &libvirt.VirConnection{}, errors.New("Unable to connect to kvm driver, did you add yourself to the libvirtd group?")
+			return &libvirt.Connect{}, errors.New("Unable to connect to kvm driver, did you add yourself to the libvirtd group?")
 		}
-		d.conn = &conn
+		d.conn = conn
 	}
 	return d.conn, nil
 }
@@ -392,7 +393,7 @@ func (d *Driver) Create() error {
 		log.Warnf("Failed to create the VM: %s", err)
 		return err
 	}
-	d.VM = &vm
+	d.VM = vm
 	d.vmLoaded = true
 
 	return d.Start()
@@ -436,7 +437,7 @@ func (d *Driver) Stop() error {
 	}
 
 	if s != state.Stopped {
-		err := d.VM.DestroyFlags(libvirt.VIR_DOMAIN_DESTROY_GRACEFUL)
+		err := d.VM.DestroyFlags(libvirt.DOMAIN_DESTROY_GRACEFUL)
 		if err != nil {
 			log.Warnf("Failed to gracefully shutdown VM")
 			return err
@@ -487,27 +488,27 @@ func (d *Driver) GetState() (state.State, error) {
 	if err := d.validateVMRef(); err != nil {
 		return state.None, err
 	}
-	states, err := d.VM.GetState()
+	virState, _, err := d.VM.GetState()
 	if err != nil {
 		return state.None, err
 	}
-	switch states[0] {
-	case libvirt.VIR_DOMAIN_NOSTATE:
+	switch virState {
+	case libvirt.DOMAIN_NOSTATE:
 		return state.None, nil
-	case libvirt.VIR_DOMAIN_RUNNING:
+	case libvirt.DOMAIN_RUNNING:
 		return state.Running, nil
-	case libvirt.VIR_DOMAIN_BLOCKED:
+	case libvirt.DOMAIN_BLOCKED:
 		// TODO - Not really correct, but does it matter?
 		return state.Error, nil
-	case libvirt.VIR_DOMAIN_PAUSED:
+	case libvirt.DOMAIN_PAUSED:
 		return state.Paused, nil
-	case libvirt.VIR_DOMAIN_SHUTDOWN:
+	case libvirt.DOMAIN_SHUTDOWN:
 		return state.Stopped, nil
-	case libvirt.VIR_DOMAIN_CRASHED:
+	case libvirt.DOMAIN_CRASHED:
 		return state.Error, nil
-	case libvirt.VIR_DOMAIN_PMSUSPENDED:
+	case libvirt.DOMAIN_PMSUSPENDED:
 		return state.Saved, nil
-	case libvirt.VIR_DOMAIN_SHUTOFF:
+	case libvirt.DOMAIN_SHUTOFF:
 		return state.Stopped, nil
 	}
 	return state.None, nil
@@ -524,7 +525,7 @@ func (d *Driver) validateVMRef() error {
 		if err != nil {
 			log.Warnf("Failed to fetch machine")
 		} else {
-			d.VM = &vm
+			d.VM = vm
 			d.vmLoaded = true
 		}
 	}
