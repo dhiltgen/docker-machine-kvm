@@ -593,21 +593,20 @@ func (d *Driver) getMAC() (string, error) {
 }
 
 func (d *Driver) getIPByMACFromAPI(mac string) (string, error) {
-	network, err := d.conn.LookupNetworkByName(d.PrivateNetwork)
+	interfaces, err := d.VM.ListAllInterfaceAddresses(uint(libvirt.DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE))
 	if err != nil {
-		log.Errorf("Failed to lookup network %s", d.PrivateNetwork)
 		return "", err
 	}
-	leases, err := network.GetDHCPLeases()
-	if err != nil {
-		log.Warnf("Failed to retrieve DHCP leases from libvirt: %v", err)
-		return "", err
-	}
-	for _, lease := range leases {
-		if strings.ToLower(mac) == strings.ToLower(lease.GetMACAddress()) {
-			return lease.GetIPAddress(), nil
+	for _, domainInterface := range interfaces {
+		if strings.ToUpper(domainInterface.Hwaddr) == strings.ToUpper(mac) {
+			// An interface can have multiple addresses (eg: ipv4 and ipv6)
+			// Just returns the first one right now...
+			for _, addr := range domainInterface.Addrs {
+				return addr.Addr, nil
+			}
 		}
 	}
+
 	return "", errors.New("failed to match IP for MAC address")
 }
 
@@ -693,9 +692,9 @@ func (d *Driver) GetIP() (string, error) {
 	}
 
 	methods := []ipLookupFunc{
+		d.getIPByMACFromAPI,
 		d.getIPByMACFromLeaseFile,
 		d.getIPByMacFromSettings,
-		d.getIPByMACFromAPI,
 	}
 	for _, method := range methods {
 		ip, err := method(mac)
