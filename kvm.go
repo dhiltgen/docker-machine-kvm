@@ -31,6 +31,7 @@ const (
 	isoFilename        = "boot2docker.iso"
 	dnsmasqLeases      = "/var/lib/libvirt/dnsmasq/%s.leases"
 	dnsmasqStatus      = "/var/lib/libvirt/dnsmasq/%s.status"
+	defaultSSHUser     = "docker"
 
 	domainXMLTemplate = `<domain type='kvm'>
   <name>{{.MachineName}}</name> <memory unit='M'>{{.Memory}}</memory>
@@ -135,6 +136,12 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Usage: "Disk IO mode: threads, native",
 			Value: "threads",
 		},
+		mcnflag.StringFlag{
+			EnvVar: "KVM_SSH_USER",
+			Name:   "kvm-ssh-user",
+			Usage:  "SSH username",
+			Value:  defaultSSHUser,
+		},
 		/* Not yet implemented
 		mcnflag.Flag{
 			Name:  "kvm-no-share",
@@ -190,7 +197,7 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SwarmHost = flags.String("swarm-host")
 	d.SwarmDiscovery = flags.String("swarm-discovery")
 	d.ISO = d.ResolveStorePath(isoFilename)
-	d.SSHUser = "docker"
+	d.SSHUser = flags.String("kvm-ssh-user")
 	d.SSHPort = 22
 	d.DiskPath = d.ResolveStorePath(fmt.Sprintf("%s.img", d.MachineName))
 	return nil
@@ -745,6 +752,7 @@ func NewDriver(hostName, storePath string) drivers.Driver {
 	return &Driver{
 		PrivateNetwork: privateNetworkName,
 		BaseDriver: &drivers.BaseDriver{
+			SSHUser:     defaultSSHUser,
 			MachineName: hostName,
 			StorePath:   storePath,
 		},
