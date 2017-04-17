@@ -444,7 +444,7 @@ func (d *Driver) Stop() error {
 	}
 
 	if s != state.Stopped {
-		err := d.VM.DestroyFlags(libvirt.DOMAIN_DESTROY_GRACEFUL)
+		err := d.VM.Shutdown()
 		if err != nil {
 			log.Warnf("Failed to gracefully shutdown VM")
 			return err
