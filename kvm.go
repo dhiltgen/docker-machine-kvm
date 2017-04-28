@@ -802,7 +802,7 @@ func (d *Driver) createDiskVolume(size int, buf *bytes.Buffer) error {
 		return err
 	}
 	// We need a stream to do the upload.
-	vstream, err := libvirt.NewVirStream(d.conn,0);
+	vstream, err := d.conn.NewStream(0);
 	if err != nil {
 		return err
 	}
@@ -810,13 +810,13 @@ func (d *Driver) createDiskVolume(size int, buf *bytes.Buffer) error {
 	volume.Upload(vstream,0,uint64(buflen), 0);
 	sent := 0;
 	for sent < buflen {
-		ret, err := vstream.Write(raw[sent:])
+		ret, err := vstream.Send(raw[sent:])
 		if err != nil {
 			return err
 		}
 		sent = sent + ret
 	}
-	err = vstream.Close()
+	err = vstream.Finish()
 	if err != nil {
 		return err
 	}
