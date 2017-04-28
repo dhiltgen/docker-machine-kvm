@@ -1,0 +1,4 @@
+.dockerignore
+out
+dockerfiles
+make

@@ -1,0 +1,12 @@
+FROM opensuse:42.2
+
+LABEL maintainer "Hart Simha <hart.simha@suse.com>"
+RUN zypper -n in libvirt-devel curl git gcc tar && \
+    git clone https://github.com/docker/machine.git /go/src/github.com/docker/machine
+
+ARG GO_VERSION
+RUN curl -sSL https://storage.googleapis.com/golang/go${GO_VERSION}.linux-amd64.tar.gz | tar -C /usr/local -xzf -
+
+ARG MACHINE_VERSION
+WORKDIR /go/src/github.com/docker/machine
+RUN git checkout $MACHINE_VERSION

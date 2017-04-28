@@ -1,0 +1,32 @@
+#!/usr/bin/env sh
+
+# This script creates the platform-specific base image used as the FROM base for constructing 
+# the image which will be used to generate the docker-machine-driver-kvm-$platform binary.
+# It expects the base image name (taking the form of $PREFIX-base:$PLATFORM) to be passed as an argument
+set -e
+GO_VERSION_ARG=GO_VERSION=${GO_VERSION:-1.8.1}
+MACHINE_VERSION_ARG=MACHINE_VERSION=${MACHINE_VERSION:-v0.10.0}
+GIT_ROOT=${GIT_ROOT:-$(git rev-parse --show-toplevel)}
+
+# Extract values 'BASE_IMAGE_NAME:PLATFORM' from the image name argument
+BASE_IMAGE_NAME=${1%:*}
+PLATFORM=${1#*:}
+
+# If the base image for this platform, go version, and machine version is not already present, build it.
+# Labels are used to track the GO_VERSION and MACHINE_VERSION
+if [ -z "$(docker images -q $@ -f label=$GO_VERSION_ARG -f label=$MACHINE_VERSION_ARG)" ]; then
+  # If an image with this BASE_IMAGE_NAME:PLATFORM already exists, store its ID for deletion later
+  PREVIOUS_IMAGE=$(docker images -q $@)
+  # Build the new image before deleting any previous one, to reuse common layers
+  docker build \
+    --label $GO_VERSION_ARG      --build-arg $GO_VERSION_ARG \
+    --label $MACHINE_VERSION_ARG --build-arg $MACHINE_VERSION_ARG \
+    -t $@ \
+    -f "${GIT_ROOT}/dockerfiles/Dockerfile.${PLATFORM}" \
+    "${GIT_ROOT}"
+  if [ -n "$PREVIOUS_IMAGE" ]; then
+    docker rmi $PREVIOUS_IMAGE
+  fi
+else
+  echo "Image '$@' with labels $GO_VERSION_ARG $MACHINE_VERSION_ARG already exists"
+fi
