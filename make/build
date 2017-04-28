@@ -1,0 +1,24 @@
+#!/usr/bin/env sh
+
+# This script builds the docker-machine-driver-kvm binary by first building a temporary
+# image with the relevant docker-machine-kvm code inside, and PATH and GO_PATH set. The binary
+# is then built in a container from this image and into 'out/'. Finally, the temporary
+# image and container (with suffixes '-build' and '-extract) are deleted
+
+set -e
+PREFIX=${PREFIX:-docker-machine-driver-kvm}
+GIT_ROOT=${GIT_ROOT:-$(git rev-parse --show-toplevel)}
+
+BASE_IMAGE=$@
+PLATFORM=${BASE_IMAGE#*:}
+BUILD_TARGET=$PREFIX-$PLATFORM
+BUILD_IMAGE=$PREFIX-build:$PLATFORM
+
+echo "Building compilation image for out/$PREFIX-$PLATFORM"
+docker build -t $BUILD_IMAGE -f "${GIT_ROOT}/Dockerfile.$PLATFORM.build" "${GIT_ROOT}"
+
+echo "Building binaries for out/$PREFIX-$PLATFORM"
+docker run --name $BUILD_TARGET-extract $BUILD_IMAGE sh -c "cd /go/src/github.com/dhiltgen/docker-machine-kvm && go get -v -d ./... && go install -v ./cmd/docker-machine-driver-kvm"
+docker cp $BUILD_TARGET-extract:/go/bin/docker-machine-driver-kvm out/$BUILD_TARGET
+docker rm $BUILD_TARGET-extract
+docker rmi $BUILD_IMAGE

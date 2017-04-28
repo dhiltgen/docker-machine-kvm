@@ -1,3 +1,4 @@
 cmd/docker-machine-driver-kvm/docker-machine-driver-kvm
 *.sw*
 docker-machine-driver-kvm-*
+out

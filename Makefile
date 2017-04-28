@@ -1,36 +1,41 @@
-PREFIX=docker-machine-driver-kvm
-MACHINE_VERSION=v0.10.0
-GO_VERSION=1.8.1
+export PREFIX=docker-machine-driver-kvm
+export GO_VERSION ?= 1.8.1
+export MACHINE_VERSION ?= v0.10.0
+export GIT_ROOT=$(shell git rev-parse --show-toplevel)
 DESCRIBE=$(shell git describe --tags)
 
-TARGETS=$(addprefix $(PREFIX)-, alpine3.4 alpine3.5 ubuntu14.04 ubuntu16.04 centos7)
+TARGETS=$(addprefix out/$(PREFIX)-, alpine3.4 alpine3.5 ubuntu14.04 ubuntu16.04 centos7 opensuse42.2)
 
 build: $(TARGETS)
 
-$(PREFIX)-%: Dockerfile.%
-	docker rmi -f $@ >/dev/null  2>&1 || true
-	docker rm -f $@-extract > /dev/null 2>&1 || true
-	echo "Building binaries for $@"
-	docker build --build-arg "MACHINE_VERSION=$(MACHINE_VERSION)" --build-arg "GO_VERSION=$(GO_VERSION)" -t $@ -f $< .
-	docker create --name $@-extract $@ sh
-	docker cp $@-extract:/go/bin/docker-machine-driver-kvm ./
-	mv ./docker-machine-driver-kvm ./$@
-	docker rm $@-extract || true
-	docker rmi $@ || true
+$(PREFIX)-base\:%: dockerfiles/Dockerfile.%
+	"$(GIT_ROOT)/make/base" $@
+
+Dockerfile.%.build:
+	@echo "FROM $(PREFIX)-base:$*" >> $@
+	@echo "ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/go/bin:/go/bin" >> $@
+	@echo "ENV GOPATH /go" >> $@
+	@echo "COPY . /go/src/github.com/dhiltgen/docker-machine-kvm" >> $@
+
+out/$(PREFIX)-%: $(PREFIX)-base\:% Dockerfile.%.build
+	"$(GIT_ROOT)/make/build" $<
 
 clean:
-	rm -f ./$(PREFIX)-*
+	rm -f ./out/$(PREFIX)-*
 
+clean-bases:
+	docker rmi $(docker images -q $(PREFIX)-base)
 
 release: build
 	@echo "Paste the following into the release page on github and upload the binaries..."
 	@echo ""
-	@for bin in $(PREFIX)-* ; do \
+	@for bin in out/$(PREFIX)-* ; do \
+	    bin=$$(basename "$$bin"); \
 	    target=$$(echo $${bin} | cut -f5- -d-) ; \
-	    md5=$$(md5sum $${bin}) ; \
+	    md5=$$(md5sum out/$${bin}) ; \
 	    echo "* $${target} - md5: $${md5}" ; \
 	    echo '```' ; \
-	    echo "  curl -L https://github.com/dhiltgen/docker-machine-kvm/releases/download/$(DESCRIBE)/$${bin} > /usr/local/bin/$(PREFIX) \\ " ; \
+	    echo "  curl -L https://github.com/dhiltgen/docker-machine-kvm/releases/download/$(DESCRIBE)/$${bin} > /usr/local/bin/$(PREFIX)" ; \
 	    echo "  chmod +x /usr/local/bin/$(PREFIX)" ; \
 	    echo '```' ; \
 	done
