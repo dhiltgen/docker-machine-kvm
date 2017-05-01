@@ -592,6 +592,24 @@ func (d *Driver) getMAC() (string, error) {
 	return dom.Devices.Interfaces[1].Mac.Address, nil
 }
 
+func (d *Driver) getIPByMACFromAPI(mac string) (string, error) {
+	interfaces, err := d.VM.ListAllInterfaceAddresses(uint(libvirt.DOMAIN_INTERFACE_ADDRESSES_SRC_LEASE))
+	if err != nil {
+		return "", err
+	}
+	for _, domainInterface := range interfaces {
+		if strings.ToUpper(domainInterface.Hwaddr) == strings.ToUpper(mac) {
+			// An interface can have multiple addresses (eg: ipv4 and ipv6)
+			// Just returns the first one right now...
+			for _, addr := range domainInterface.Addrs {
+				return addr.Addr, nil
+			}
+		}
+	}
+
+	return "", errors.New("failed to match IP for MAC address")
+}
+
 func (d *Driver) getIPByMACFromLeaseFile(mac string) (string, error) {
 	leaseFile := fmt.Sprintf(dnsmasqLeases, d.PrivateNetwork)
 	data, err := ioutil.ReadFile(leaseFile)
@@ -633,6 +651,11 @@ func (d *Driver) getIPByMacFromSettings(mac string) (string, error) {
 	}
 	statusFile := fmt.Sprintf(dnsmasqStatus, bridge_name)
 	data, err := ioutil.ReadFile(statusFile)
+	if err != nil {
+		log.Debugf("Failed to read dnsmasq status from %s", statusFile)
+		return "", err
+	}
+
 	type Lease struct {
 		Ip_address  string `json:"ip-address"`
 		Mac_address string `json:"mac-address"`
@@ -659,22 +682,27 @@ func (d *Driver) getIPByMacFromSettings(mac string) (string, error) {
 	return ipAddr, nil
 }
 
+type ipLookupFunc func(mac string) (string, error)
+
 func (d *Driver) GetIP() (string, error) {
 	log.Debugf("GetIP called for %s", d.MachineName)
 	mac, err := d.getMAC()
 	if err != nil {
 		return "", err
 	}
-	/*
-	 * TODO - Figure out what version of libvirt changed behavior and
-	 *        be smarter about selecting which algorithm to use
-	 */
-	ip, err := d.getIPByMACFromLeaseFile(mac)
-	if ip == "" {
-		ip, err = d.getIPByMacFromSettings(mac)
+
+	methods := []ipLookupFunc{
+		d.getIPByMACFromAPI,
+		d.getIPByMACFromLeaseFile,
+		d.getIPByMacFromSettings,
 	}
-	log.Debugf("Unable to locate IP address for MAC %s", mac)
-	return ip, err
+	for _, method := range methods {
+		ip, err := method(mac)
+		if err == nil {
+			return ip, nil
+		}
+	}
+	return "", fmt.Errorf("unable to locate IP address for MAC %s")
 }
 
 func (d *Driver) publicSSHKeyPath() string {
