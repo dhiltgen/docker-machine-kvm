@@ -107,6 +107,7 @@ type Driver struct {
 	IOMode           string
 	StoragePoolName  string
 	StorageVolumeName string
+    StorageCleanup   []string
 	connectionString string
 	conn             *libvirt.Connect
 	VM               *libvirt.Domain
@@ -137,6 +138,11 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		mcnflag.StringFlag{
 			Name:  "kvm-storage-volume",
 			Usage: "Name of storage volume if other than the machine name.",
+		},
+		mcnflag.StringFlag{
+			Name:  "kvm-storage-cleanup",
+			Usage: "Action for storage volume when the machine is killed. Valid: none, zero, force, delete (Default: delete)",
+            Value: "delete",
 		},
 		// TODO - support for multiple networks
 		mcnflag.StringFlag{
@@ -216,12 +222,26 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.Boot2DockerURL = flags.String("kvm-boot2docker-url")
 	d.CacheMode = flags.String("kvm-cache-mode")
 	d.IOMode = flags.String("kvm-io-mode")
-	d.StoragePoolName = flags.String("kvm-storage-pool");
-	if flags.String("storage-volume") != "" {
-		d.StorageVolumeName = flags.String("kvm-storage-volume");
+	d.StoragePoolName = flags.String("kvm-storage-pool")
+	if flags.String("kvm-storage-volume") != "" {
+		d.StorageVolumeName = flags.String("kvm-storage-volume")
 	} else {
-		d.StorageVolumeName = d.MachineName;
+		d.StorageVolumeName = d.MachineName
 	}
+    if flags.String("kvm-storage-cleanup") != "" {
+        // We split this on , because it is possible to combine flags
+        d.StorageCleanup = strings.Split(flags.String("kvm-storage-cleanup"), ",")
+        for _, value := range d.StorageCleanup {
+            if value != "none" && value != "zero" && value != "force" && value != "delete" {
+                return errors.New("--kvm-storage-cleanup expects 'none', 'delete', 'zero', 'force'.")
+            }
+            if value == "none" && len(d.StorageCleanup) > 0 {
+                return errors.New("--kvm-storage-cleanup cannot both be 'none' and 'delete', 'zero' or 'force'.")
+            }
+        }
+    } else {
+        d.StorageCleanup = []string{"delete"}
+    }
 	d.SwarmMaster = flags.Bool("swarm-master")
 	d.SwarmHost = flags.String("swarm-host")
 	d.SwarmDiscovery = flags.String("swarm-discovery")
@@ -507,6 +527,12 @@ func (d *Driver) Remove() error {
 	//       could take a snapshot.  If you do, then Undefine
 	//       will fail unless we nuke the snapshots first
 	d.VM.Destroy() // Ignore errors
+    if d.StoragePoolName != "" && d.StorageVolumeName != "" {
+        err := d.destroyDiskVolume()
+        if err != nil {
+            return err
+        }
+    }
 	return d.VM.Undefine()
 }
 
@@ -789,7 +815,7 @@ func (d *Driver) createDiskImage(dest string, size int, buf *bytes.Buffer) error
 	return f.Close()
 }
 
-func (d *Driver) createDiskVolume(size int, buf *bytes.Buffer) error { 
+func (d *Driver) createDiskVolume(size int, buf *bytes.Buffer) error {
 	raw := buf.Bytes()
 	sizeBytes := int64(size) << 20
 	pool, err := d.conn.LookupStoragePoolByName(d.StoragePoolName)
@@ -826,6 +852,43 @@ func (d *Driver) createDiskVolume(size int, buf *bytes.Buffer) error {
 	}
 	return nil
 }
+
+func (d *Driver) destroyDiskVolume() error {
+	pool, err := d.conn.LookupStoragePoolByName(d.StoragePoolName)
+	if err != nil {
+		return err
+	}
+    volume, err := pool.LookupStorageVolByName(d.StorageVolumeName);
+	if err != nil {
+		return err
+	}
+    if len(d.StorageCleanup) > 0 {
+        if d.StorageCleanup[0] != "none" {
+            var deleteFlags libvirt.StorageVolDeleteFlags
+            deleteFlags = libvirt.STORAGE_VOL_DELETE_NORMAL
+            for _, value := range d.StorageCleanup {
+                if value == "zero" {
+                    deleteFlags = libvirt.STORAGE_VOL_DELETE_ZEROED
+                }
+            }
+            for _, value := range d.StorageCleanup {
+                if value == "force" {
+                    deleteFlags |= libvirt.STORAGE_VOL_DELETE_WITH_SNAPSHOTS
+                }
+            }
+            err = volume.Delete(deleteFlags);
+            if err != nil {
+                return err
+            }
+        }
+    }
+    err = volume.Free();
+	if err != nil {
+		return err
+	}
+    return nil
+}
+
 
 func NewDriver(hostName, storePath string) drivers.Driver {
 	return &Driver{

@@ -49,6 +49,16 @@ Community Members did some tests and it works with [rancher/os](https://github.c
         docker-machine ssh mymachinename "ip -one -4 addr show dev eth0|cut -f7 -d' '"
         ```
 
+## LibVirt Volumes / Pools
+Libvirt's storage pool / storage volume system abstracts the creation and deletion of storage areas across a variety of backend platforms.  For example, storage pools can be backed by iSCSI, ZFS, or even local/network file systems. 
+See [Libvirt Storage](https://libvirt.org/storage.html).  Storage volumes are allocated out of storage pools. The kvm-storage-cleanup flag defines the fate of the volume when the docker machine is removed.  The default behavior
+'delete' removes the volume on "docker-machine rm", other behaviors are below. Multiple values can be combined by joining the values with a comma, for example "delete,force".  Not all backends support all options.
+   * **delete** - The default action.  Simply remove the alllocated volume.
+   * **zero** - Write zeros over the data before deleting. (Slow)
+   * **force** - Delete the volume even if it has associated snapshots or other records which might otherwise restrict deletion.
+   * **none** - Do NOT delete the volume on "docker-machine rm".  Cannot be combined with other options.
+
+
 ## Driver Parameters
 
 Here are all currently driver parameters listed that you can use.
@@ -62,6 +72,9 @@ Here are all currently driver parameters listed that you can use.
 | **--kvm-boot2docker-url** | Sets the url from which host the image is loaded. By default it's not set.   |
 | **--kvm-cache-mode** | Sets the caching mode of the kvm machine. Defaults to `default`.   |    
 | **--kvm-io-mode-url** | Sets the disk io mode of the kvm machine. Defaults to `threads`.   |      
+| **--kvm-storage-pool** | Storage pool where the disk volume should be created. If omited, a qemu cow file will be used.   |      
+| **--kvm-storage-volume* | Name of storage volume if other than the machine name.   |      
+| **--kvm-storage-cleanup** | Action for storage volume when the machine is killed. Valid: none, zero, force, delete (Default: delete).   |      
 
 
 
