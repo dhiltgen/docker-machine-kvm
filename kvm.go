@@ -370,7 +370,7 @@ func (d *Driver) Create() error {
 		mode := info.Mode()
 		if mode&0001 != 1 {
 			log.Debugf("Setting executable bit set on %s", dir)
-			mode |= 0001
+			mode |= 0011
 			os.Chmod(dir, mode)
 		}
 	}
