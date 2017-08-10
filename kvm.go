@@ -36,7 +36,7 @@ const (
 	domainXMLTemplate = `<domain type='kvm'>
   <name>{{.MachineName}}</name> <memory unit='M'>{{.Memory}}</memory>
   <vcpu>{{.CPU}}</vcpu>
-  <features><acpi/><apic/><pae/></features>
+  <features><acpi/><apic/><pae/><vmport state='off'/></features>
   <cpu mode='host-passthrough'></cpu>
   <os>
     <type>hvm</type>
@@ -45,25 +45,33 @@ const (
     <bootmenu enable='no'/>
   </os>
   <devices>
+   <memballoon model='none'/>
+   <controller type='usb' model='none'>
+   </controller>
     <disk type='file' device='cdrom'>
       <source file='{{.ISO}}'/>
-      <target dev='hdc' bus='ide'/>
+      <target dev='hdc' bus='scsi'/>
       <readonly/>
     </disk>
     <disk type='file' device='disk'>
       <driver name='qemu' type='raw' cache='{{.CacheMode}}' io='{{.IOMode}}' />
       <source file='{{.DiskPath}}'/>
-      <target dev='hda' bus='ide'/>
+      <target dev='hda' bus='virtio'/>
     </disk>
     <graphics type='vnc' autoport='yes' listen='127.0.0.1'>
       <listen type='address' address='127.0.0.1'/>
     </graphics>
     <interface type='network'>
       <source network='{{.Network}}'/>
+      <model type='virtio'/>
     </interface>
     <interface type='network'>
       <source network='{{.PrivateNetwork}}'/>
+      <model type='virtio'/>
     </interface>
+    <rng model='virtio'>
+      <backend model='random'>/dev/random</backend>
+    </rng>
   </devices>
 </domain>`
 	networkXML = `<network>
