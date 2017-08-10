@@ -142,7 +142,7 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 		mcnflag.StringFlag{
 			Name:  "kvm-io-mode",
 			Usage: "Disk IO mode: threads, native",
-			Value: "native",
+			Value: "threads",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "KVM_SSH_USER",
