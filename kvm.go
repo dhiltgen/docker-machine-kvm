@@ -34,7 +34,8 @@ const (
 	defaultSSHUser     = "docker"
 
 	domainXMLTemplate = `<domain type='kvm'>
-  <name>{{.MachineName}}</name> <memory unit='M'>{{.Memory}}</memory>
+  <name>{{.MachineName}}</name>
+  <memory unit='MB'>{{.Memory}}</memory>
   <vcpu>{{.CPU}}</vcpu>
   <features><acpi/><apic/><pae/></features>
   <cpu mode='host-passthrough'></cpu>
