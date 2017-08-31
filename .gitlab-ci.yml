@@ -1,0 +1,14 @@
+build:
+  image: fedora:26
+  variables:
+    DOCKER_HOST: "tcp://gbraad__dind-options:2375"
+  services:
+    - gbraad/dind-options:latest
+  script:
+    - dnf install -y docker make git
+    - make
+    - mkdir -p public
+    - mv docker-machine-driver-kvm-* ./public
+  artifacts:
+    paths:
+      - public
