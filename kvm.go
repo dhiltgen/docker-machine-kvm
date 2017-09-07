@@ -633,6 +633,10 @@ func (d *Driver) getIPByMacFromSettings(mac string) (string, error) {
 	}
 	statusFile := fmt.Sprintf(dnsmasqStatus, bridge_name)
 	data, err := ioutil.ReadFile(statusFile)
+	if err != nil {
+		log.Warnf("Failed to read dnsmasq lease status: %s", err)
+		return "", err
+	}
 	type Lease struct {
 		Ip_address  string `json:"ip-address"`
 		Mac_address string `json:"mac-address"`
