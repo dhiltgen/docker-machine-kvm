@@ -11,7 +11,7 @@ $(PREFIX)-%: Dockerfile.%
 	docker rmi -f $@ >/dev/null  2>&1 || true
 	docker rm -f $@-extract > /dev/null 2>&1 || true
 	echo "Building binaries for $@"
-	docker build --build-arg "MACHINE_VERSION=$(MACHINE_VERSION)" --build-arg "GO_VERSION=$(GO_VERSION)" -t $@ -f $< .
+	docker build --build-arg "MACHINE_VERSION=$(MACHINE_VERSION)" --build-arg "GO_VERSION=$(GO_VERSION)" --build-arg "PLUGIN_VERSION=$(DESCRIBE)" -t $@ -f $< .
 	docker create --name $@-extract $@ sh
 	docker cp $@-extract:/go/bin/docker-machine-driver-kvm ./
 	mv ./docker-machine-driver-kvm ./$@

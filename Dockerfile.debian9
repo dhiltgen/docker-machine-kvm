@@ -4,6 +4,7 @@ MAINTAINER Daniel Hiltgen <daniel.hiltgen@docker.com>
 
 ARG MACHINE_VERSION
 ARG GO_VERSION
+ARG PLUGIN_VERSION
 ENV GOPATH /go
 
 RUN apt-get update && apt-get install -y libvirt-dev curl git gcc
@@ -15,4 +16,4 @@ COPY . /go/src/github.com/dhiltgen/docker-machine-kvm
 WORKDIR /go/src/github.com/dhiltgen/docker-machine-kvm
 RUN go get -v -d ./...
 
-RUN go install -v ./cmd/docker-machine-driver-kvm
+RUN go install -v -ldflags="-X main.goVersion=${GO_VERSION} -X main.machineVersion=${MACHINE_VERSION} -X main.pluginVersion=${PLUGIN_VERSION}" ./cmd/docker-machine-driver-kvm
