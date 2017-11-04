@@ -62,6 +62,5 @@ Here are all currently driver parameters listed that you can use.
 | **--kvm-boot2docker-url** | Sets the url from which host the image is loaded. By default it's not set.   |
 | **--kvm-cache-mode** | Sets the caching mode of the kvm machine. Defaults to `default`.   |    
 | **--kvm-io-mode-url** | Sets the disk io mode of the kvm machine. Defaults to `threads`.   |      
-
-
-
+| **--kvm-connection-url** | Sets the url to access libvirtd. Defaults to `qemu:///system`.   |      
+| **--kvm-pool** | Sets the pool to use. Defaults to `default`.   |      

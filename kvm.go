@@ -26,7 +26,6 @@ import (
 )
 
 const (
-	connectionString   = "qemu:///system"
 	privateNetworkName = "docker-machines"
 	isoFilename        = "boot2docker.iso"
 	dnsmasqLeases      = "/var/lib/libvirt/dnsmasq/%s.leases"
@@ -74,6 +73,18 @@ const (
     </dhcp>
   </ip>
 </network>`
+	voltemplatexml string = `<volume type='file'>
+  <name>%s</name>
+  <capacity unit="bytes">%d</capacity>
+  <target>
+  <path>%s</path>
+  <format type='%s'/>
+  <permissions>
+  <mode>0644</mode>
+  </permissions>
+  <compat>1.1</compat>
+  </target>
+  </volume>`
 )
 
 type Driver struct {
@@ -91,10 +102,39 @@ type Driver struct {
 	DiskPath         string
 	CacheMode        string
 	IOMode           string
-	connectionString string
+	ConnectionString string
+	Pool             string
 	conn             *libvirt.Connect
 	VM               *libvirt.Domain
 	vmLoaded         bool
+}
+
+func ChooseData(path string, size int) func(stream *libvirt.Stream, i int) ([]byte, error) {
+	return func(stream *libvirt.Stream, i int) ([]byte, error) {
+		fmt.Println("Uploading " + path)
+		file, err := os.Open(path)
+		if err != nil {
+			fmt.Println("Failed reading file")
+			fmt.Println(err)
+			return nil, err
+		}
+		readtotal := 0
+		buffer := make([]byte, 4096)
+		for {
+			readsize, err := file.Read(buffer)
+			if err == io.EOF {
+				stream.Finish()
+				break
+			}
+			readtotal = readtotal + readsize
+			if size != 0 && readtotal > size {
+				stream.Finish()
+				break
+			}
+			stream.Send(buffer)
+		}
+		return buffer, nil
+	}
 }
 
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
@@ -141,6 +181,18 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:   "kvm-ssh-user",
 			Usage:  "SSH username",
 			Value:  defaultSSHUser,
+		},
+		mcnflag.StringFlag{
+			EnvVar: "KVM_CONNECTION_URL",
+			Name:   "kvm-connection-url",
+			Usage:  "Kvm connection URL. Defaults to qemu:///system",
+			Value:  "qemu:///system",
+		},
+		mcnflag.StringFlag{
+			EnvVar: "KVM_POOL",
+			Name:   "kvm-pool",
+			Usage:  "Kvm pool to use. Defaults to default",
+			Value:  "default",
 		},
 		/* Not yet implemented
 		mcnflag.Flag{
@@ -192,6 +244,8 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.Boot2DockerURL = flags.String("kvm-boot2docker-url")
 	d.CacheMode = flags.String("kvm-cache-mode")
 	d.IOMode = flags.String("kvm-io-mode")
+	d.ConnectionString = flags.String("kvm-connection-url")
+	d.Pool = flags.String("kvm-pool")
 
 	d.SwarmMaster = flags.Bool("swarm-master")
 	d.SwarmHost = flags.String("swarm-host")
@@ -218,7 +272,7 @@ func (d *Driver) GetURL() (string, error) {
 
 func (d *Driver) getConn() (*libvirt.Connect, error) {
 	if d.conn == nil {
-		conn, err := libvirt.NewConnect(connectionString)
+		conn, err := libvirt.NewConnect(d.ConnectionString)
 		if err != nil {
 			log.Errorf("Failed to connect to libvirt: %s", err)
 			return &libvirt.Connect{}, errors.New("Unable to connect to kvm driver, did you add yourself to the libvirtd group?")
@@ -381,6 +435,65 @@ func (d *Driver) Create() error {
 	}
 
 	log.Debugf("Defining VM...")
+	if d.ConnectionString != "qemu:///system" {
+		conn, err := d.getConn()
+		if err != nil {
+			log.Infof("connection is " + d.ConnectionString)
+			fmt.Println(err)
+			return err
+		}
+		pool, _ := conn.LookupStoragePoolByName(d.Pool)
+		pool.Refresh(0)
+		poolxml, _ := pool.GetXMLDesc(0)
+		type Target struct {
+			Path string `xml:"path"`
+		}
+		type Pool struct {
+			Name string `xml:"name"`
+			Targ Target `xml:"target"`
+		}
+		var poolinfo Pool
+		xml.Unmarshal([]byte(poolxml), &poolinfo)
+		poolpath := poolinfo.Targ.Path
+		d.ISO = fmt.Sprintf("%s/%s", poolpath, isoFilename)
+		d.DiskPath = fmt.Sprintf("%s/%s.img", poolpath, d.MachineName)
+		_, err = conn.LookupStorageVolByPath(d.DiskPath)
+		volxml := fmt.Sprintf(voltemplatexml, d.MachineName+".img", d.DiskSize, d.DiskPath, "raw")
+		volume, err := pool.StorageVolCreateXML(volxml, 0)
+		if err != nil {
+			log.Errorf("Failed to create disk %s.img", d.MachineName)
+			return err
+		}
+		stream, err := conn.NewStream(0)
+		if err != nil {
+			log.Errorf("Failed to create stream")
+			return err
+		}
+		volume.Upload(stream, 0, 0, 0)
+		volumepath := d.ResolveStorePath(fmt.Sprintf("%s.img", d.MachineName))
+		UploadData := ChooseData(volumepath, 12*1024)
+		stream.SendAll(UploadData)
+		d.DiskPath = fmt.Sprintf("%s/%s.img", poolpath, d.MachineName)
+		existingvol, _ := conn.LookupStorageVolByPath(d.ISO)
+		if existingvol == nil {
+			fileinfo, _ := os.Stat(d.ResolveStorePath(isoFilename))
+			isosize := fileinfo.Size()
+			isoxml := fmt.Sprintf(voltemplatexml, isoFilename, isosize, d.ISO, "raw")
+			iso, err := pool.StorageVolCreateXML(isoxml, 0)
+			if err != nil {
+				log.Errorf("Failed to create " + isoFilename)
+				return err
+			}
+			stream, err := conn.NewStream(0)
+			if err != nil {
+				log.Errorf("Failed to create stream")
+				return err
+			}
+			iso.Upload(stream, 0, 0, 0)
+			UploadIso := ChooseData(d.ResolveStorePath(isoFilename), 0)
+			stream.SendAll(UploadIso)
+		}
+	}
 	tmpl, err := template.New("domain").Parse(domainXMLTemplate)
 	if err != nil {
 		return err
@@ -471,6 +584,12 @@ func (d *Driver) Remove() error {
 	//       could take a snapshot.  If you do, then Undefine
 	//       will fail unless we nuke the snapshots first
 	d.VM.Destroy() // Ignore errors
+	if d.ConnectionString != "qemu:///system" {
+		volume, err := d.conn.LookupStorageVolByPath(d.DiskPath)
+		if err == nil {
+			volume.Delete(0)
+		}
+	}
 	return d.VM.Undefine()
 }
 
@@ -659,6 +778,26 @@ func (d *Driver) getIPByMacFromSettings(mac string) (string, error) {
 	return ipAddr, nil
 }
 
+func (d *Driver) getIPByMacFromLeases(mac string) (string, error) {
+	conn, err := d.getConn()
+	if err != nil {
+		return "", nil
+	}
+	network, _ := conn.LookupNetworkByName(d.PrivateNetwork)
+	leases, _ := network.GetDHCPLeases()
+	ipAddr := ""
+	for _, lease := range leases {
+		if strings.ToLower(lease.Mac) == strings.ToLower(mac) {
+			ipAddr = lease.IPaddr
+			break
+		}
+	}
+	if ipAddr != "" {
+		log.Debugf("IP address: %s", ipAddr)
+	}
+	return ipAddr, nil
+}
+
 func (d *Driver) GetIP() (string, error) {
 	log.Debugf("GetIP called for %s", d.MachineName)
 	mac, err := d.getMAC()
@@ -671,7 +810,8 @@ func (d *Driver) GetIP() (string, error) {
 	 */
 	ip, err := d.getIPByMACFromLeaseFile(mac)
 	if ip == "" {
-		ip, err = d.getIPByMacFromSettings(mac)
+		// ip, err = d.getIPByMacFromSettings(mac)
+		ip, err = d.getIPByMacFromLeases(mac)
 	}
 	log.Debugf("Unable to locate IP address for MAC %s", mac)
 	return ip, err
