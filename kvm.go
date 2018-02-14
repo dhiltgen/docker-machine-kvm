@@ -15,20 +15,19 @@ import (
 	"text/template"
 	"time"
 
-	libvirt "github.com/libvirt/libvirt-go"
-
+	"github.com/dhiltgen/docker-machine-kvm/config"
 	"github.com/docker/machine/libmachine/drivers"
 	"github.com/docker/machine/libmachine/log"
 	"github.com/docker/machine/libmachine/mcnflag"
 	"github.com/docker/machine/libmachine/mcnutils"
 	"github.com/docker/machine/libmachine/ssh"
 	"github.com/docker/machine/libmachine/state"
+	libvirt "github.com/libvirt/libvirt-go"
 )
 
 const (
 	connectionString   = "qemu:///system"
 	privateNetworkName = "docker-machines"
-	isoFilename        = "boot2docker.iso"
 	dnsmasqLeases      = "/var/lib/libvirt/dnsmasq/%s.leases"
 	dnsmasqStatus      = "/var/lib/libvirt/dnsmasq/%s.status"
 	defaultSSHUser     = "docker"
@@ -77,24 +76,11 @@ const (
 )
 
 type Driver struct {
-	*drivers.BaseDriver
+	*config.Config
 
-	Memory           int
-	DiskSize         int
-	CPU              int
-	Network          string
-	PrivateNetwork   string
-	ISO              string
-	Boot2DockerURL   string
-	CaCertPath       string
-	PrivateKeyPath   string
-	DiskPath         string
-	CacheMode        string
-	IOMode           string
-	connectionString string
-	conn             *libvirt.Connect
-	VM               *libvirt.Domain
-	vmLoaded         bool
+	conn     *libvirt.Connect
+	VM       *libvirt.Domain
+	vmLoaded bool
 }
 
 func (d *Driver) GetCreateFlags() []mcnflag.Flag {
@@ -185,22 +171,7 @@ func (d *Driver) DriverName() string {
 
 func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	log.Debugf("SetConfigFromFlags called")
-	d.Memory = flags.Int("kvm-memory")
-	d.DiskSize = flags.Int("kvm-disk-size")
-	d.CPU = flags.Int("kvm-cpu-count")
-	d.Network = flags.String("kvm-network")
-	d.Boot2DockerURL = flags.String("kvm-boot2docker-url")
-	d.CacheMode = flags.String("kvm-cache-mode")
-	d.IOMode = flags.String("kvm-io-mode")
-
-	d.SwarmMaster = flags.Bool("swarm-master")
-	d.SwarmHost = flags.String("swarm-host")
-	d.SwarmDiscovery = flags.String("swarm-discovery")
-	d.ISO = d.ResolveStorePath(isoFilename)
-	d.SSHUser = flags.String("kvm-ssh-user")
-	d.SSHPort = 22
-	d.DiskPath = d.ResolveStorePath(fmt.Sprintf("%s.img", d.MachineName))
-	return nil
+	return d.Config.SetConfigFromFlags(flags)
 }
 
 func (d *Driver) GetURL() (string, error) {
@@ -750,11 +721,13 @@ func createDiskImage(dest string, size int, r io.Reader) error {
 
 func NewDriver(hostName, storePath string) drivers.Driver {
 	return &Driver{
-		PrivateNetwork: privateNetworkName,
-		BaseDriver: &drivers.BaseDriver{
-			SSHUser:     defaultSSHUser,
-			MachineName: hostName,
-			StorePath:   storePath,
+		Config: &config.Config{
+			PrivateNetwork: privateNetworkName,
+			BaseDriver: &drivers.BaseDriver{
+				SSHUser:     defaultSSHUser,
+				MachineName: hostName,
+				StorePath:   storePath,
+			},
 		},
 	}
 }
