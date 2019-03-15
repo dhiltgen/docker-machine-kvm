@@ -2,6 +2,8 @@ PREFIX=docker-machine-driver-kvm
 MACHINE_VERSION=v0.10.0
 GO_VERSION=1.8.1
 DESCRIBE=$(shell git describe --tags)
+ORIGIN=$(shell git remote -v | grep '(push)$$' | sed -e 's!\S\S*\s\s*\(\S\S*\)\s.*!\1!')
+REPOSITORY=$(shell echo '$(ORIGIN)' | sed -e 's!\(https://\|\S\S*@\)\([^/:][^/:]*\)[/:]\(.*\)\.git$$!https://\2/\3!')
 
 TARGETS=$(addprefix $(PREFIX)-, alpine3.4 alpine3.5 ubuntu14.04 ubuntu16.04 centos7)
 
@@ -27,11 +29,15 @@ release: build
 	@echo ""
 	@for bin in $(PREFIX)-* ; do \
 	    target=$$(echo $${bin} | cut -f5- -d-) ; \
-	    md5=$$(md5sum $${bin}) ; \
-	    echo "* $${target} - md5: $${md5}" ; \
+	    md5=$$(md5sum $${bin} | cut -f1 -d' ') ; \
+	    sha256=$$(sha256sum $${bin} | cut -f1 -d' ') ; \
+	    echo "#### $${target}" ; \
+	    echo "$${bin}" ; \
+	    echo "* SHA-256: $${sha256}" ; \
+	    echo "* MD5: $${md5}" ; \
 	    echo '```' ; \
-	    echo "  curl -L https://github.com/dhiltgen/docker-machine-kvm/releases/download/$(DESCRIBE)/$${bin} > /usr/local/bin/$(PREFIX) \\ " ; \
-	    echo "  chmod +x /usr/local/bin/$(PREFIX)" ; \
+	    echo "curl -L $(REPOSITORY)/releases/download/$(DESCRIBE)/$${bin} > /usr/local/bin/$(PREFIX) && \\"; \
+	    echo "chmod +x /usr/local/bin/$(PREFIX)" ; \
 	    echo '```' ; \
 	done
 
