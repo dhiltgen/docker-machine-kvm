@@ -59,9 +59,11 @@ const (
       <listen type='address' address='127.0.0.1'/>
     </graphics>
     <interface type='network'>
+      {{.NICModelElement}}
       <source network='{{.Network}}'/>
     </interface>
     <interface type='network'>
+      {{.NICModelElement}}
       <source network='{{.PrivateNetwork}}'/>
     </interface>
   </devices>
@@ -91,6 +93,7 @@ type Driver struct {
 	DiskPath         string
 	CacheMode        string
 	IOMode           string
+	NICModelElement  string
 	connectionString string
 	conn             *libvirt.Connect
 	VM               *libvirt.Domain
@@ -135,6 +138,11 @@ func (d *Driver) GetCreateFlags() []mcnflag.Flag {
 			Name:  "kvm-io-mode",
 			Usage: "Disk IO mode: threads, native",
 			Value: "threads",
+		},
+		mcnflag.StringFlag{
+			Name:  "kvm-nic-type",
+			Usage: "Network interface model type: default, e1000, rtl8139, virtio, etc.",
+			Value: "default",
 		},
 		mcnflag.StringFlag{
 			EnvVar: "KVM_SSH_USER",
@@ -200,6 +208,12 @@ func (d *Driver) SetConfigFromFlags(flags drivers.DriverOptions) error {
 	d.SSHUser = flags.String("kvm-ssh-user")
 	d.SSHPort = 22
 	d.DiskPath = d.ResolveStorePath(fmt.Sprintf("%s.img", d.MachineName))
+
+	if flags.String("kvm-nic-type") == "default" {
+		d.NICModelElement = ""
+	} else {
+		d.NICModelElement = fmt.Sprintf("<model type='%s'/>", flags.String("kvm-nic-type"))
+	}
 	return nil
 }
 
